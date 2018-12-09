@@ -134,9 +134,8 @@
  (defvar *dnd-mode-buttons* nil))
 
 (defun dnd-highlight-dice-buttons ()
-  "Returns a list of the buffer's dnd--btn-data, which is a list of lists containing 
-the matching string, beginning positiong, end position, number of dice, the 
-dice rolled (e.g. d12), and the bonus. ((string beg end num die bonus) ...)"
+  "Finds all dice-roll strings in the buffer and turns them into clickable 
+buttons that will print the result of the dice roll depicted."
   (interactive)
   (save-excursion
     (goto-char 1)

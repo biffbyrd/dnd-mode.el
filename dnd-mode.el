@@ -186,3 +186,183 @@ buttons that will print the result of the dice roll depicted."
     (if num-str
 	(string-to-number num-str)
       nil)))
+
+;; SPELLS
+
+
+(defconst dnd--file-base (file-name-directory (or load-file-name "/home/biff/dnd-mode.el/dnd-mode.el")))
+
+(defun dnd--spells-json-file-name ()
+  (expand-file-name "spells.json" dnd--file-base))
+
+(defconst dnd--spell-list
+  (let* ((json-array-type 'list)
+	 (json-key-type 'string)
+	 (json (json-read-file (dnd--spells-json-file-name))))
+    json))
+
+(cl-defun dnd-lookup-spells (&key filter compare)
+  (lexical-let* ((filter_ (or filter 'always-t))
+		 (comp_ (or compare 'always-nil)))
+    (seq-sort comp_ (seq-filter filter_ dnd--spell-list))))
+
+(defun always-t (a) t)
+(defun always-nil (a b) nil)
+
+(defun dnd-spell-filter-name (rgx)
+  (lexical-let* ((r rgx))
+    (lambda (spell)
+      (let* ((sn (downcase (dnd-spell-name spell))))
+	(string-match-p r sn)))))
+
+
+(defun dnd-spell-name (spell) (dnd--assocdr "name" spell))
+(defun dnd-spell-level (spell) (dnd--assocdr "level" spell))
+(defun dnd-spell-school (spell) (dnd--assocdr "school" spell))
+(defun dnd-spell-cast-time (spell) (dnd--assocdr "time" spell))
+(defun dnd-spell-range (spell) (dnd--assocdr "range" spell))
+(defun dnd-spell-components (spell) (dnd--assocdr "components" spell))
+(defun dnd-spell-duration (spell) (dnd--assocdr "duration" spell))
+
+(defun dnd--assocdr (key alist)
+  (cdr (assoc key alist)))
+
+(defun dnd--display-spells (spells)
+  (if (not spells) nil
+    (lexical-let* ((buf (get-buffer-create (concat "dnd-" (dnd-spell-name (car spells))))))
+      (split-window-horizontally)
+      (other-window 1)
+      (switch-to-buffer buf)
+      (dolist (spell spells)
+	(insert "--------------------------------------------------\n")
+	(insert (concat "    " (dnd--format-spell-name spell)) "\n\n")
+	(insert (concat (dnd--format-spell-level-school spell)) "\n")
+	(insert (concat (dnd--format-spell-cast-time spell)) "\n")
+	(insert (concat (dnd--format-spell-components spell)) "\n\n")
+	(insert (concat (dnd--format-spell-entries spell)) "\n\n"))
+      (dnd-rehighlight-dice-buttons))))
+
+(dnd--display-spells (dnd-lookup-spells))
+
+(defun dnd--format-spell-name (spell) (dnd-spell-name spell))
+(defun dnd--format-spell-level-school (spell)
+  (let* ((lvl (number-to-string (dnd-spell-level spell)))
+	 (sch-short (dnd-spell-school spell))
+	 (sch-long (cond ((equal sch-short "A") "abjuration")
+			 ((equal sch-short "C") "conjuration")
+			 ((equal sch-short "D") "divination")
+			 ((equal sch-short "E") "enchantment")
+			 ((equal sch-short "I") "illusion")
+                         ((equal sch-short "N") "necromancy")
+                         ((equal sch-short "T") "transmutation")
+                         ((equal sch-short "V") "evocation")
+		         (t ""))))
+    (concat "Level " lvl " " sch-long)))
+
+(defun dnd--format-spell-cast-time (spell)
+  (concat
+   "Time: "
+   (lexical-let* ((times (dnd-spell-cast-time spell)))
+     (mapconcat
+      (lambda (time)
+        (lexical-let* ((number (number-to-string (dnd--assocdr "number" time)))
+                       (unit (dnd--assocdr "unit" time))
+                       (condition (dnd--assocdr "condition" time))
+                       (rslt (concat number " " unit)))
+          (if (not condition)
+              rslt
+            (concat rslt " (" condition ")"))))
+      times
+      " / "))))
+
+(defun dnd--format-spell-range (spell)
+  (lexical-let* ((range (dnd--assocdr "range" spell))
+                 (type (dnd--assocdr "type" range))
+                 (distance (dnd--assocdr "distance" range))
+                 (amount (number-to-string (dnd--assocdr "amount" distance)))
+                 (unit (dnd--assocdr "type" distance)))
+    (concat "Range: " amount " " unit " (" type ")")))
+
+(defun dnd--format-spell-components (spell)
+  (dnd--wrap-string
+   (lexical-let* ((comps (dnd--assocdr "components" spell))
+                  (v (if (dnd--assocdr "v" comps) "V" nil))
+                  (s (if (dnd--assocdr "s" comps) "S" nil))
+                  (m? (dnd--assocdr "m" comps))
+                  (m (cond ((not m?) nil)
+                           ((stringp m?) m?)
+                           ((listp m?) (dnd--assocdr "text" m?))
+                           (t nil)))
+                  (comp-list (seq-filter 'identity (list v s m)))
+                  (comp-str (mapconcat 'identity comp-list ", ")))                 
+     (concat "Components: " comp-str))))
+
+(defun dnd--wrap-string (str)
+  (with-temp-buffer
+    (set-fill-column 50)
+    (insert str)
+    (fill-region (point-min) (point-max))
+    (buffer-string)))
+
+(defun dnd--format-spell-duration (spell)
+  (concat
+   "Duration: "
+   (mapconcat
+    (lambda (dur)
+      (lexical-let* ((type (dnd--assocdr "type" dur)))
+        (cond ((or (equal type "instant") (equal type "special")) type)
+              ((equal type "permanent")
+               (concat "until " (mapconcat 'identity (dnd--assocdr "ends" dur) " or ")))
+              ((equal type "timed")
+               (let* ((dur2 (dnd--assocdr "duration" dur))
+                      (conc (if (dnd--assocdr "concentration" dur) "Concentraion, " ""))
+                      (upto (if (dnd--assocdr "upTo" dur2) "up to " ""))
+                      (amount (concat (number-to-string (dnd--assocdr "amount" dur2)) " "))
+                      (unit (dnd--assocdr "type" dur2)))
+                 (concat conc upto amount unit))))))
+    (dnd--assocdr "duration" spell)
+    " / ")))
+
+
+(defun dnd--format-spell-entries (spell)
+  (lexical-let* ((entries (dnd--assocdr "entries" spell)))
+    (mapconcat (lambda (entry)
+		 (cond ((stringp entry) (dnd--wrap-string entry))
+		       ((listp entry) (dnd--format-entry-object entry))
+		       (t "")))
+	       entries
+	       "\n\n")))
+
+(defun dnd--format-entry-object (entry)
+  (let* ((name (dnd--assocdr "name" entry))
+         (type (dnd--assocdr "type" entry)))
+    (cond ((equal type "entries")
+           (concat name ". " (mapconcat 'identity (dnd--assocdr "entries" (dnd--wrap-string entry)) "\n\n")))
+          ((equal type "list") (mapconcat 'identity (dnd--assocdr "items" (dnd--wrap-string entry)) "\n"))
+          ((equal type "table") (dnd--format-entry-object-table entry))
+          (t ""))))
+
+(defun dnd--format-entry-object-table (table)
+  (lexical-let* ((colLabels (dnd--assocdr "colLabels" table))
+                 (rows (dnd--assocdr "rows" table)))
+    (with-temp-buffer
+      (goto-char 1)
+      (dolist (lbl colLabels)
+        (insert (concat "|" lbl)))
+      (insert "\n|-\n")
+      (dolist (row rows)
+        (dolist (cell row)
+          (if (stringp cell)
+              (insert (concat "|" cell))
+            (lexical-let* ((roll (dnd--assocdr "roll" cell))
+                           (exact (dnd--assocdr "exact" roll))
+                           (min (dnd--assocdr "min" roll))
+                           (max (dnd--assocdr "max" roll)))
+              (if exact
+                  (insert (concat "|" (number-to-string exact)))
+                (insert (concat "|" (number-to-string min) " - " (number-to-string max)))))))
+        (insert "\n"))
+      (goto-char 1)
+      (org-mode)
+      (org-table-align)
+      (buffer-string))))

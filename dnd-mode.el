@@ -242,7 +242,6 @@ buttons that will print the result of the dice roll depicted."
 	(insert (concat (dnd--format-spell-entries spell)) "\n\n"))
       (dnd-rehighlight-dice-buttons))))
 
-(dnd--display-spells (dnd-lookup-spells))
 
 (defun dnd--format-spell-name (spell) (dnd-spell-name spell))
 (defun dnd--format-spell-level-school (spell)
@@ -260,20 +259,21 @@ buttons that will print the result of the dice roll depicted."
     (concat "Level " lvl " " sch-long)))
 
 (defun dnd--format-spell-cast-time (spell)
-  (concat
-   "Time: "
-   (lexical-let* ((times (dnd-spell-cast-time spell)))
-     (mapconcat
-      (lambda (time)
-        (lexical-let* ((number (number-to-string (dnd--assocdr "number" time)))
-                       (unit (dnd--assocdr "unit" time))
-                       (condition (dnd--assocdr "condition" time))
-                       (rslt (concat number " " unit)))
-          (if (not condition)
-              rslt
-            (concat rslt " (" condition ")"))))
-      times
-      " / "))))
+  (dnd--wrap-string
+   (concat
+    "Time: "
+    (lexical-let* ((times (dnd-spell-cast-time spell)))
+      (mapconcat
+       (lambda (time)
+         (lexical-let* ((number (number-to-string (dnd--assocdr "number" time)))
+			(unit (dnd--assocdr "unit" time))
+			(condition (dnd--assocdr "condition" time))
+			(rslt (concat number " " unit)))
+           (if (not condition)
+               rslt
+             (concat rslt " (" condition ")"))))
+       times
+       " / ")))))
 
 (defun dnd--format-spell-range (spell)
   (lexical-let* ((range (dnd--assocdr "range" spell))
@@ -329,7 +329,7 @@ buttons that will print the result of the dice roll depicted."
     (mapconcat (lambda (entry)
 		 (cond ((stringp entry) (dnd--wrap-string entry))
 		       ((listp entry) (dnd--format-entry-object entry))
-		       (t "")))
+		       (t "???")))
 	       entries
 	       "\n\n")))
 
@@ -337,8 +337,8 @@ buttons that will print the result of the dice roll depicted."
   (let* ((name (dnd--assocdr "name" entry))
          (type (dnd--assocdr "type" entry)))
     (cond ((equal type "entries")
-           (concat name ". " (mapconcat 'identity (dnd--assocdr "entries" (dnd--wrap-string entry)) "\n\n")))
-          ((equal type "list") (mapconcat 'identity (dnd--assocdr "items" (dnd--wrap-string entry)) "\n"))
+           (concat name ". " (mapconcat 'dnd--wrap-string (dnd--assocdr "entries" entry) "\n\n")))
+          ((equal type "list") (mapconcat 'dnd--wrap-string (dnd--assocdr "items" entry) "\n"))
           ((equal type "table") (dnd--format-entry-object-table entry))
           (t ""))))
 

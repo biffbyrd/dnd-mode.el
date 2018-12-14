@@ -84,7 +84,7 @@ buttons that will print the result of the dice roll depicted."
 
 
 ;; regexps for searching
-(setq dnd--regexp-1d2+3 "\\([0-9]+\\)d\\([0-9]+\\)\\+\\([0-9]+\\)") ;; 2d4+3
+(setq dnd--regexp-1d2+3 "\\([0-9]+\\)d\\([0-9]+\\) ?\\+ ?\\([0-9]+\\)") ;; 2d4+3, 2d4 + 3
 (setq dnd--regexp-1d2-3 "\\([0-9]+\\)d\\([0-9]+\\)-\\([0-9]+\\)")   ;; 2d4-3
 (setq dnd--regexp-1d2 "\\([0-9]+\\)d\\([0-9]+\\)")                  ;; 2d4
 (setq dnd--regexp-d2 "d\\([0-9]+\\)")                               ;; d4
@@ -227,7 +227,7 @@ buttons that will print the result of the dice roll depicted."
 (defun dnd--assocdr (key alist)
   (cdr (assoc key alist)))
 
-(defun dnd--display-spells (spells)
+(defun dnd-display-spells (spells)
   (if (not spells) nil
     (lexical-let* ((buf (get-buffer-create (concat "dnd-" (dnd-spell-name (car spells))))))
       (split-window-horizontally)
@@ -238,8 +238,10 @@ buttons that will print the result of the dice roll depicted."
 	(insert (concat "    " (dnd--format-spell-name spell)) "\n\n")
 	(insert (concat (dnd--format-spell-level-school spell)) "\n")
 	(insert (concat (dnd--format-spell-cast-time spell)) "\n")
-	(insert (concat (dnd--format-spell-components spell)) "\n\n")
-	(insert (concat (dnd--format-spell-entries spell)) "\n\n"))
+	(insert (concat (dnd--format-spell-components spell)) "\n")
+	(insert (concat (dnd--format-spell-duration spell)) "\n\n")
+	(insert (concat (dnd--format-spell-entries spell)) "\n\n")
+	(insert (concat (dnd--format-spell-higher-levels-entry spell)) "\n\n"))
       (dnd-rehighlight-dice-buttons))))
 
 
@@ -305,23 +307,24 @@ buttons that will print the result of the dice roll depicted."
     (buffer-string)))
 
 (defun dnd--format-spell-duration (spell)
-  (concat
-   "Duration: "
-   (mapconcat
-    (lambda (dur)
-      (lexical-let* ((type (dnd--assocdr "type" dur)))
-        (cond ((or (equal type "instant") (equal type "special")) type)
-              ((equal type "permanent")
-               (concat "until " (mapconcat 'identity (dnd--assocdr "ends" dur) " or ")))
-              ((equal type "timed")
-               (let* ((dur2 (dnd--assocdr "duration" dur))
-                      (conc (if (dnd--assocdr "concentration" dur) "Concentraion, " ""))
-                      (upto (if (dnd--assocdr "upTo" dur2) "up to " ""))
-                      (amount (concat (number-to-string (dnd--assocdr "amount" dur2)) " "))
-                      (unit (dnd--assocdr "type" dur2)))
-                 (concat conc upto amount unit))))))
-    (dnd--assocdr "duration" spell)
-    " / ")))
+  (dnd--wrap-string
+   (concat
+    "Duration: "
+    (mapconcat
+     (lambda (dur)
+       (lexical-let* ((type (dnd--assocdr "type" dur)))
+         (cond ((or (equal type "instant") (equal type "special")) type)
+               ((equal type "permanent")
+		(concat "until " (mapconcat 'identity (dnd--assocdr "ends" dur) " or ")))
+               ((equal type "timed")
+		(let* ((dur2 (dnd--assocdr "duration" dur))
+                       (conc (if (dnd--assocdr "concentration" dur) "Concentraion, " ""))
+                       (upto (if (dnd--assocdr "upTo" dur2) "up to " ""))
+                       (amount (concat (number-to-string (dnd--assocdr "amount" dur2)) " "))
+                       (unit (dnd--assocdr "type" dur2)))
+                  (concat conc upto amount unit))))))
+     (dnd--assocdr "duration" spell)
+     " / "))))
 
 
 (defun dnd--format-spell-entries (spell)
@@ -337,8 +340,8 @@ buttons that will print the result of the dice roll depicted."
   (let* ((name (dnd--assocdr "name" entry))
          (type (dnd--assocdr "type" entry)))
     (cond ((equal type "entries")
-           (concat name ". " (mapconcat 'dnd--wrap-string (dnd--assocdr "entries" entry) "\n\n")))
-          ((equal type "list") (mapconcat 'dnd--wrap-string (dnd--assocdr "items" entry) "\n"))
+           (dnd--wrap-string (concat name ". " (mapconcat 'identity (dnd--assocdr "entries" entry) "\n\n"))))
+          ((equal type "list") (mapconcat (lambda (i) (dnd--wrap-string (concat "- " i))) (dnd--assocdr "items" entry) "\n"))
           ((equal type "table") (dnd--format-entry-object-table entry))
           (t ""))))
 
@@ -366,3 +369,7 @@ buttons that will print the result of the dice roll depicted."
       (org-mode)
       (org-table-align)
       (buffer-string))))
+
+(defun dnd--format-spell-higher-levels-entry (spell)
+  (let* ((entriesHigherLevel (dnd--assocdr "entriesHigherLevel" spell)))
+    (mapconcat 'dnd--format-entry-object entriesHigherLevel "\n\n")))

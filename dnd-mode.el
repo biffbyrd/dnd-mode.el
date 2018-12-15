@@ -187,6 +187,7 @@ buttons that will print the result of the dice roll depicted."
 	(string-to-number num-str)
       nil)))
 
+
 ;; SPELLS
 
 
@@ -201,6 +202,7 @@ buttons that will print the result of the dice roll depicted."
 	 (json (json-read-file (*dnd-spells-json-file-name))))
     json))
 
+
 (cl-defun dnd-lookup-spells (&key filter compare)
   (lexical-let* ((filter_ (or filter 'always-t))
 		 (comp_ (or compare 'always-nil)))
@@ -209,14 +211,9 @@ buttons that will print the result of the dice roll depicted."
 (defun always-t (a) t)
 (defun always-nil (a b) nil)
 
-(defun dnd-spell-filter-name (rgx)
-  (lexical-let* ((r rgx))
-    (lambda (spell)
-      (let* ((sn (downcase (*dnd-assocdr "name" spell))))
-	(string-match-p r sn)))))
-
 (defun *dnd-assocdr (key alist)
   (cdr (assoc key alist)))
+
 
 (defun dnd-display-spells (spells)
   (if (not spells) nil
@@ -232,7 +229,7 @@ buttons that will print the result of the dice roll depicted."
 	(insert (concat (*dnd-format-spell-duration spell) "\n\n"))
 	(insert (concat (*dnd-format-spell-entries spell) "\n\n"))
 	(insert (*dnd-format-spell-higher-levels-entry spell))
-	(insert (concat (*dnd-assocdr ""))))
+	(insert (concat (*dnd-format-spell-class-list spell) "\n\n")))
       (dnd-rehighlight-dice-buttons))))
 
 (defun *dnd-format-spell-title (spell)
@@ -371,3 +368,41 @@ buttons that will print the result of the dice roll depicted."
     (if (= (length str) 0)
         str
       (concat str "\n\n"))))
+
+(defun *dnd-spell-class-list (spell)
+  (lexical-let* ((class-object (*dnd-assocdr "classes" spell))
+		 (class-list (*dnd-assocdr "fromClassList" class-object))
+		 (sub-list (*dnd-assocdr "fromSubclass" class-object))
+		 (main-classes (mapcar (lambda (c) (downcase (*dnd-assocdr "name" c))) class-list)))
+    main-classes))
+
+(defun *dnd-format-spell-class-list (spell)
+  (lexical-let* ((class-list (*dnd-spell-class-list spell)))
+    (*dnd-wrap-string (concat "Classes: " (mapconcat 'identity class-list ", ")))))
+
+
+;; SPELL FILTERS
+
+
+(defun dnd-spell-filter-name (rgx &rest rgxs)
+  (lexical-let* ((rs (cons rgx rgxs)))
+    (lambda (spell)
+      (lexical-let* ((sn (downcase (*dnd-assocdr "name" spell))))
+	(seq-some (lambda (r)
+		    (string-match-p r sn))
+		  rs)))))
+
+(defun dnd-spell-filter-class (class-name)
+  (lexical-let* ((cn class-name))
+    (lambda (spell)
+      (seq-contains (*dnd-spell-class-list spell) cn))))
+
+(defun dnd-spell-filter-level (level)
+  (lexical-let* ((lvl level))
+    (lambda (spell)
+      (= lvl (*dnd-assocdr "level" spell)))))
+
+(defun dnd-spell-sort-by-level (s1 s2)
+  (lexical-let* ((lvl1 (*dnd-assocdr "level" s1))
+		 (lvl2 (*dnd-assocdr "level" s2)))
+    (< lvl1 lvl2)))

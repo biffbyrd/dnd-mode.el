@@ -222,7 +222,7 @@ buttons that will print the result of the dice roll depicted."
       (other-window 1)
       (switch-to-buffer buf)
       (dolist (spell spells)
-        (insert "-------------------------------------------------------\n")
+        (insert "=======================================================\n")
 	(insert (concat (*dnd-format-spell-title spell) "\n\n"))
 	(insert (concat (*dnd-format-spell-cast-time spell) "\n"))
 	(insert (concat (*dnd-format-spell-components spell) "\n"))
@@ -384,10 +384,10 @@ buttons that will print the result of the dice roll depicted."
 ;; SPELL FILTERS
 
 
-(defun dnd-spell-filter-name (rgx &rest rgxs)
+(defun dnd-filter-by-name (rgx &rest rgxs)
   (lexical-let* ((rs (cons rgx rgxs)))
-    (lambda (spell)
-      (lexical-let* ((sn (downcase (*dnd-assocdr "name" spell))))
+    (lambda (obj)
+      (lexical-let* ((sn (downcase (*dnd-assocdr "name" obj))))
 	(seq-some (lambda (r)
 		    (string-match-p r sn))
 		  rs)))))

@@ -94,7 +94,7 @@ buttons that will print the result of the dice roll depicted."
 (setq *dnd-regexp-33-percent "\\([0-9]+\\) percent")                ;; 33 percent
 
 (setq *dnd-dice-regexp
-      (mapconcat (lambda (rx) (concat "[[:space:]\n(,]" rx "[[:space:]\n),]"))
+      (mapconcat (lambda (rx) (concat "[[:space:]\n(,;]" rx "[[:space:]\n),;]"))
                  (list *dnd-regexp-1d2+3
 		       *dnd-regexp-1d2-3
                        *dnd-regexp-1d2
@@ -406,3 +406,120 @@ buttons that will print the result of the dice roll depicted."
   (lexical-let* ((lvl1 (*dnd-assocdr "level" s1))
 		 (lvl2 (*dnd-assocdr "level" s2)))
     (< lvl1 lvl2)))
+
+
+;; MONSTERS
+
+
+(defun *dnd-monsters-json-file-name ()
+  (expand-file-name "monsters.lite.json" *dnd-file-base))
+
+(defconst *dnd-monster-list
+  (let* ((json-array-type 'list)
+	 (json-key-type 'string)
+	 (json (json-read-file (*dnd-monsters-json-file-name))))
+    json))
+
+
+(cl-defun dnd-lookup-monsters (&key filter compare)
+  (lexical-let* ((filter_ (or filter 'always-t))
+		 (comp_ (or compare 'always-nil)))
+    (seq-sort comp_ (seq-filter filter_ *dnd-monster-list))))
+
+(defun dnd-display-monsters (monsters)
+  (if (not monsters) nil
+    (lexical-let* ((buf (get-buffer-create (concat "dnd-" (*dnd-assocdr "name" (car monsters))))))
+      (split-window-horizontally)
+      (other-window 1)
+      (switch-to-buffer buf)
+      (dolist (m monsters)
+        (insert "=======================================================\n")
+        (insert (concat "* " (*dnd-assocdr "name" m) "\n"))
+        (insert (*dnd-assocdr "size" m))
+        (insert (concat " " (*dnd-assocdr "type" m) ", "))
+        (insert (concat (*dnd-assocdr "alignment" m) "\n"))
+        (insert (concat "CR: " (*dnd-assocdr "cr" m) "\n\n"))
+        (insert (concat "AC: " (*dnd-assocdr "ac" m) "\n"))
+        (insert (concat "HP: " (*dnd-assocdr "hp" m) "\n"))
+        (insert (concat "Speed: " (*dnd-assocdr "speed" m) "\n\n"))
+        (insert (*dnd-format-monster-stats m))
+        (insert "\n**Profs\n")
+        (insert (*dnd-wrap-string (concat "Save: " (*dnd-assocdr "save" m) "\n")))
+        (insert (*dnd-wrap-string (concat "Skill: " (*dnd-assocdr "skill" m) "\n")))
+        (insert (*dnd-wrap-string (concat "Resist: " (*dnd-assocdr "resist" m) "\n")))
+        (insert (*dnd-wrap-string (concat "Senses: " (*dnd-assocdr "senses" m) "\n")))
+        (insert (*dnd-wrap-string (concat "Immun: " (*dnd-assocdr "immune" m) "\n")))
+        (insert (*dnd-wrap-string (concat "Condition Immun: " (*dnd-assocdr "conditionImmune" m) "\n")))
+        (insert (*dnd-wrap-string (concat "Lang: " (*dnd-assocdr "languages" m))))
+        (insert "\n\n**Traits\n")
+        (insert (*dnd-wrap-string (mapconcat 'identity (*dnd-assocdr "trait" m) "\n\n")))
+        (if (*dnd-assocdr "spellcasting" m)
+            (progn
+              (insert "\n\n**Spell Casting\n")
+              (insert (*dnd-format-monster-spells (*dnd-assocdr "spellcasting" m)))))
+        (insert "\n\n**Actions\n")
+        (insert (*dnd-wrap-string (mapconcat 'identity (*dnd-assocdr "action" m) "\n\n")))
+        (if (*dnd-assocdr "legendary" m)
+            (progn
+              (insert "\n\n**Legendary Actions\n")
+              (insert (*dnd-wrap-string (mapconcat 'identity (*dnd-assocdr "legendary" m) "\n\n")))))
+        (if (*dnd-assocdr "lairActions" m)
+            (progn
+              (insert "\n\n**Lair Actions\n")
+              (insert (*dnd-format-monster-lair-actions (*dnd-assocdr "lairActions" m)))))
+        (insert "\n\n")
+	)
+      (dnd-rehighlight-dice-buttons))))
+
+(defun *dnd-format-monster-stats (m)
+  (lexical-let* ((str (*dnd-assocdr "str" m))
+                 (dex (*dnd-assocdr "dex" m))
+                 (con (*dnd-assocdr "con" m))
+                 (int (*dnd-assocdr "int" m))
+                 (wis (*dnd-assocdr "wis" m))
+                 (cha (*dnd-assocdr "cha" m))
+                 (ints (list str dex con int wis cha)))
+    (if (some (lambda (a) (not a)) ints)
+        ""
+      (with-temp-buffer
+        (lexical-let* ((strs (mapcar* 'number-to-string ints))
+                       (bonuses (mapcar (lambda (i)
+                                          (let* ((b (truncate (ffloor (/ (- i 10) 2.0))))
+                                                 (sign (if (< b 0) "" "+")))
+                                            (concat sign (number-to-string b))))
+                                        ints)))
+          (goto-char 1)
+          (insert "|str|dex|con|int|wis|cha|\n")
+          (insert "|-\n|")
+          (insert (mapconcat 'identity strs "|"))
+          (insert "\n|")
+          (insert (mapconcat 'identity bonuses " | "))
+          (goto-char 1)
+          (org-mode)
+          (org-table-align)
+          (buffer-string))))))
+
+(defun *dnd-format-monster-spells (entries)
+  (mapconcat (lambda (e)
+               (lexical-let* ((name (*dnd-assocdr "name" e))
+                              (header (*dnd-wrap-string (concat name ". " (*dnd-assocdr "header" e))))
+                              (spells (mapconcat (lambda (i) (*dnd-wrap-string (concat "- " i))) (*dnd-assocdr "spells" e) "\n")))
+                 (concat header "\n" spells)))
+             entries
+             "\n\n"))
+
+(defun *dnd-format-monster-lair-actions (entries)
+  (lexical-let* ((es entries ))
+    (mapconcat (lambda (entry)
+		 (cond ((stringp entry) (*dnd-wrap-string entry))
+		       ((listp entry)
+                        (lexical-let* ((type (*dnd-assocdr "type" entry)))
+                          (cond ((equal type "entries")
+                                 (*dnd-wrap-string (mapconcat 'identity (*dnd-assocdr "entries" entry) "\n\n")))
+                                ((equal type "list")
+                                 (mapconcat (lambda (i) (*dnd-wrap-string (concat "- " i))) (*dnd-assocdr "items" entry) "\n"))
+                                ((equal type "table") (*dnd-format-entry-object-table entry))
+                                (t ""))))
+		       (t "???")))
+	       es
+	       "\n\n")))
